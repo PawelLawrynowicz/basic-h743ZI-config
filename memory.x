@@ -5,7 +5,8 @@ MEMORY
   /* STM32H742xI/743xI/753xI       */
   /* STM32H745xI/747xI/755xI/757xI */
   /* STM32H7A3xI/7B3xI             */
-  FLASH  : ORIGIN = 0x08000000, LENGTH = 2M
+  FLASH : ORIGIN = 0x08000000, LENGTH = 1M
+  DATA (xrw): ORIGIN = 0x08100000, LENGTH = 128K
 
   /* STM32H742xG/743xG       */
   /* STM32H745xG/STM32H747xG */
@@ -46,6 +47,11 @@ _stack_start = ORIGIN(RAM) + LENGTH(RAM);
 
 /* These sections are used for some of the examples */
 SECTIONS {
+  .userdata : {
+    . = ALIGN(4);
+    KEEP(*(.userdata))
+    . = ALIGN(4);
+  } > DATA
   .axisram (NOLOAD) : ALIGN(8) {
     *(.axisram .axisram.*);
     . = ALIGN(8);

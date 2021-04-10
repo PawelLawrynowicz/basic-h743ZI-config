@@ -1,6 +1,9 @@
 #![no_std]
 #![no_main]
 
+#[link_section = ".userdata"]
+#[no_mangle]
+static mut datax: [u32; 8] = [0, 0, 0, 0, 0, 0, 0, 0];
 use cortex_m_rt::{entry, exception};
 use cortex_m_semihosting::hprintln;
 use panic_semihosting as _;
@@ -11,6 +14,7 @@ use stm32h7xx_hal::pwr::Pwr;
 use stm32h7xx_hal::stm32::*;
 use stm32h7xx_hal::{
     delay::{Delay, DelayFromCountDownTimer},
+    device,
     hal::digital::v2::OutputPin,
 };
 use stm32h7xx_hal::{pac, prelude::*};
@@ -22,32 +26,33 @@ pub struct Flash {
 #[entry]
 fn main() -> ! {
     let cp = cortex_m::Peripherals::take().unwrap();
-    let dp = pac::Peripherals::take().unwrap();
+    let dp = device::Peripherals::take().unwrap();
 
     let pwr = dp.PWR.constrain();
     let pwrcfg = pwr.vos0(&dp.SYSCFG).freeze();
 
     let rcc = dp.RCC.constrain();
     let ccdr = rcc
-        .sys_ck(120.mhz())
-        .hclk(60.mhz())
+        .sys_ck(70.mhz())
+        .hclk(35.mhz())
         .pll1_strategy(stm32h7xx_hal::rcc::PllConfigStrategy::Iterative)
         .freeze(pwrcfg, &dp.SYSCFG);
 
-    let flash = Flash::new(dp.FLASH, 4);
+    let wielka_dupa = unsafe { datax };
+    hprintln!("LINKER MEMORY: {:?}", wielka_dupa);
 
-    let mut value: u32 = 2345;
+    let flash = Flash::new(dp.FLASH, 0x4);
+
+    let mut value: u32 = 6;
     let offset = 0;
 
-    flash.erase().unwrap();
+    //flash.erase().unwrap();
 
     flash.write(offset, &value).unwrap();
 
-    value = 6789;
-
     value = flash.read(offset);
 
-    hprintln!("{}", value).unwrap();
+    hprintln!("HOPEFULLY NOT 4294967295:\n              {:?}", value).unwrap();
 
     loop {}
 }
@@ -70,6 +75,11 @@ impl Flash {
     }
 
     fn init(&self) {
+        match self.unlocked() {
+            true => panic!("LOCK1 UNLOCKED"),
+            false => hprintln!("LOCK1 LOCKED").unwrap(),
+        }
+
         self.flash
             .bank1_mut()
             .keyr
@@ -90,14 +100,21 @@ impl Flash {
         let ps = self.flash.bank1_mut().cr.read().psize().bits();
         hprintln!("PSIZE: {}", ps);
 
+        match self.unlocked() {
+            true => hprintln!("LOCK1 UNLOCKED!").unwrap(),
+            false => panic!("LOCK1 LOCKED"),
+        }
+    }
+
+    fn unlocked(&self) -> bool {
         match self.flash.bank1_mut().cr.read().lock().bit_is_clear() {
-            false => panic!("YIKES"),
-            true => (),
+            false => return false,
+            true => return true,
         }
     }
 
     pub fn erase(&self) -> Result<(), u16> {
-        while self.flash.bank1_mut().sr.read().bsy().bit_is_set() {}
+        while self.flash.bank1_mut().sr.read().qw().bit_is_set() {}
 
         self.flash.bank1_mut().cr.modify(|_, w| {
             w.ser().set_bit();
@@ -105,8 +122,9 @@ impl Flash {
         });
         self.flash.bank1_mut().cr.modify(|_, w| w.start().set_bit());
 
-        while self.flash.bank1_mut().sr.read().bsy().bit_is_set() {}
+        while self.flash.bank1_mut().sr.read().qw().bit_is_set() {}
 
+        //CO TO ROBI?
         self.flash
             .bank1_mut()
             .cr
@@ -139,33 +157,52 @@ impl Flash {
 
     pub fn write<T>(&self, offset: usize, data: &T) -> Result<(), u16> {
         let size = core::mem::size_of::<T>();
-        hprintln!("SIZE: {}", size);
         let src_ptr = (data as *const T) as *const u32;
         let dest_ptr = Flash::get_address(self, offset, size) as *mut u32;
 
         debug_assert!(size % 4 == 0, "data size not 4-byte aligned");
         debug_assert!(src_ptr as usize % 4 == 0, "data address not 4-byte aligned");
 
-        while self.flash.bank1_mut().sr.read().bsy().bit_is_set() {}
+        hprintln!("WAITING FOR BANK1");
+        while self.flash.bank1_mut().sr.read().qw().bit_is_set() {}
+        hprintln!("FINISHED WAITING FOR BANK1");
 
         //check if register operations can be moved out of the loop
         for i in 0..size as isize / 4 {
+            hprintln!("SETTING PG1 BIT");
             self.flash.bank1_mut().cr.modify(|_, w| w.pg().set_bit());
 
             hprintln!("WSPN: {:?}", self.flash.bank1().wpsn_curr.read().bits());
 
-            if !self.flash.bank1_mut().cr.read().lock().bit_is_clear() {
-                panic!("YIKES BUT IN WRITE")
+            match self.flash.bank1_mut().cr.read().pg().bit_is_set() {
+                true => hprintln!("PG1 BIT SET!").unwrap(),
+                false => panic!("PG1 BIT NOT SET"),
             }
+
+            hprintln!("WSPN: {:?}", self.flash.bank1_mut().wpsn_curr.read().bits());
 
             unsafe {
                 let zmienna = src_ptr.offset(i);
-                *dest_ptr.offset(i) = *zmienna;
-                //core::ptr::write_volatile(dest_ptr.offset(i), *zmienna);
+                core::ptr::write_volatile(dest_ptr.offset(i), *zmienna);
+
+                hprintln!("WROTE: {} to ADDRESS: {:?}", *zmienna, dest_ptr.offset(i));
+                hprintln!("AFTER WRITING: {:?}", *dest_ptr);
             }
-            // FORCE WRITE
-            self.flash.bank1_mut().cr.modify(|_, w| w.fw().set_bit());
-            while self.flash.bank1_mut().sr.read().bsy().bit_is_set() {}
+
+            self.flash.bank1_mut().cr.write(|w| w.fw().set_bit());
+
+            hprintln!("AFTER FORCE WRITING: {:?}", unsafe {
+                *(0x0808_0000 as *mut u32)
+            });
+
+            hprintln!(
+                "REGISTER STATUS: {}",
+                self.flash.bank1_mut().sr.read().bits()
+            );
+
+            hprintln!("WAITING FOR BANK1 AGAIN");
+            while self.flash.bank1_mut().sr.read().qw().bit_is_set() {}
+            hprintln!("FINISHED WAITING FOR BANK1 AGAIN");
 
             let status = self.flash.bank1_mut().sr.read();
             if status.wrperr().bit_is_set()
@@ -173,7 +210,9 @@ impl Flash {
                 || status.operr().bit_is_set()
                 || status.incerr().bit_is_set()
                 || status.strberr().bit_is_set()
+                || status.rdperr().bit_is_set()
             {
+                hprintln!("STATUS ERROR DURING WRITE");
                 self.flash
                     .bank1_mut()
                     .sr
@@ -182,11 +221,12 @@ impl Flash {
             }
         }
 
-        if !self.flash.bank1_mut().cr.read().lock().bit_is_clear() {
-            panic!("YIKES BUT IN WRITE");
-        }
-
         self.flash.bank1_mut().cr.modify(|_, w| w.pg().clear_bit());
+        self.flash.bank1_mut().cr.write(|w| w.lock().set_bit());
+
+        if self.unlocked() {
+            panic!("CR1 UNLOCKED AFTER WRITE");
+        }
 
         Ok(())
     }

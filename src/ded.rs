@@ -45,13 +45,9 @@ pub fn init(flash: device::FLASH) {
 
 #[entry]
 fn main() -> ! {
-    let mut _x = 2;
-    let mut _y = _x + 1;
-    let mut _z = _y;
+    let dataa: &[u8] = &[1 as u8, 3 as u8, 4 as u8, 5 as u8, 6 as u8];
 
-    loop {
-        _z = 2 + _y
-    }
+    write(0x0808_0000, 5, dataa);
 }
 
 fn get_flash() -> Result<&'static mut device::FLASH> {
@@ -180,7 +176,9 @@ fn write(address: u32, length: usize, data: &[u8]) -> Result<()> {
             | (data[offset + 3] as u32) << 24;
         let write_address = (address + offset as u32) as *mut u32;
         unsafe { core::ptr::write_volatile(write_address, word) };
-
+        hprintln!("AFTER FORCE WRITING: {:?}", unsafe {
+            *(0x0808_0000 as *mut u32)
+        });
         while flash.bank2().sr.read().bsy().bit_is_set() {}
 
         let sr = flash.bank2().sr.read();
@@ -193,9 +191,3 @@ fn write(address: u32, length: usize, data: &[u8]) -> Result<()> {
     lock(flash);
     Ok(())
 }
-fn read(address: u32, length: usize) -> Result<()> {
-    check_address_valid(address, length)?;
-    let ptr = Flash::get_address(self, offset, size) as *const u8;
-    return Ok(unsafe { core::ptr::read(ptr as *const _) });
-}
-pub struct Address(pub u32);
