@@ -151,7 +151,6 @@ impl Flash {
         //check if register operations can be moved out of the loop
         for i in 0..size as isize / 4 {
             self.flash.bank1_mut().cr.modify(|_, w| w.pg().set_bit());
-            self.flash.bank1_mut().cr.modify(|_, w| w.fw().set_bit());
 
             hprintln!("WSPN: {:?}", self.flash.bank1().wpsn_curr.read().bits());
 
@@ -164,6 +163,8 @@ impl Flash {
                 *dest_ptr.offset(i) = *zmienna;
                 //core::ptr::write_volatile(dest_ptr.offset(i), *zmienna);
             }
+            // FORCE WRITE
+            self.flash.bank1_mut().cr.modify(|_, w| w.fw().set_bit());
             while self.flash.bank1_mut().sr.read().bsy().bit_is_set() {}
 
             let status = self.flash.bank1_mut().sr.read();
