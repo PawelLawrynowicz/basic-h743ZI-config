@@ -1,0 +1,12 @@
+[package]
+name = "dice-hub75"
+version = "0.1.0"
+authors = ["Krzysztof Hamulecki <krz.ham@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+hub75={git="https://github.com/PawelLawrynowicz/hub75-rs.git", branch="DrawTarget-implementation"}
+embedded-graphics = "0.6.2"
+embedded-hal = "0.2.4"

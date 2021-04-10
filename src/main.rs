@@ -3,21 +3,13 @@
 
 #[link_section = ".userdata"]
 #[no_mangle]
-static mut datax: [u32; 8] = [0, 0, 0, 0, 0, 0, 0, 0];
-use cortex_m_rt::{entry, exception};
+static mut datax: [u32; 8] = [0, 0, 0, 0, 0, 859, 0, 0];
+use cortex_m_rt::entry;
 use cortex_m_semihosting::hprintln;
 use panic_semihosting as _;
 use stm32h7xx_hal::device::FLASH;
-use stm32h7xx_hal::gpio::Speed::VeryHigh;
+use stm32h7xx_hal::device;
 use stm32h7xx_hal::prelude::*;
-use stm32h7xx_hal::pwr::Pwr;
-use stm32h7xx_hal::stm32::*;
-use stm32h7xx_hal::{
-    delay::{Delay, DelayFromCountDownTimer},
-    device,
-    hal::digital::v2::OutputPin,
-};
-use stm32h7xx_hal::{pac, prelude::*};
 pub struct Flash {
     flash: FLASH,
     pub sector: u8,
@@ -33,22 +25,28 @@ fn main() -> ! {
 
     let rcc = dp.RCC.constrain();
     let ccdr = rcc
-        .sys_ck(70.mhz())
-        .hclk(35.mhz())
+        .sys_ck(480.mhz())
+        .hclk(240.mhz())
         .pll1_strategy(stm32h7xx_hal::rcc::PllConfigStrategy::Iterative)
         .freeze(pwrcfg, &dp.SYSCFG);
 
-    let wielka_dupa = unsafe { datax };
-    hprintln!("LINKER MEMORY: {:?}", wielka_dupa);
+    let linker_test = unsafe { datax };
+    hprintln!("LINKER MEMORY: {:?}", linker_test);
 
-    let flash = Flash::new(dp.FLASH, 0x4);
+    let flash = Flash::new(dp.FLASH, 0x2);
 
-    let mut value: u32 = 6;
+    let mut value: [u32;8] = [1,2,3,4,0,8,5,9];
     let offset = 0;
 
-    //flash.erase().unwrap();
+    flash.erase().unwrap();
+
+    let linker_test = unsafe { datax };
+    hprintln!("LINKER MEMORY: {:?}", linker_test);
 
     flash.write(offset, &value).unwrap();
+
+    let linker_test = unsafe { datax };
+    hprintln!("LINKER MEMORY: {:?}", linker_test);
 
     value = flash.read(offset);
 
@@ -170,14 +168,7 @@ impl Flash {
         //check if register operations can be moved out of the loop
         for i in 0..size as isize / 4 {
             hprintln!("SETTING PG1 BIT");
-            self.flash.bank1_mut().cr.modify(|_, w| w.pg().set_bit());
-
-            hprintln!("WSPN: {:?}", self.flash.bank1().wpsn_curr.read().bits());
-
-            match self.flash.bank1_mut().cr.read().pg().bit_is_set() {
-                true => hprintln!("PG1 BIT SET!").unwrap(),
-                false => panic!("PG1 BIT NOT SET"),
-            }
+            self.flash.bank1_mut().cr.write(|w| w.pg().set_bit());
 
             hprintln!("WSPN: {:?}", self.flash.bank1_mut().wpsn_curr.read().bits());
 
@@ -188,11 +179,9 @@ impl Flash {
                 hprintln!("WROTE: {} to ADDRESS: {:?}", *zmienna, dest_ptr.offset(i));
                 hprintln!("AFTER WRITING: {:?}", *dest_ptr);
             }
-
-            self.flash.bank1_mut().cr.write(|w| w.fw().set_bit());
-
+  
             hprintln!("AFTER FORCE WRITING: {:?}", unsafe {
-                *(0x0808_0000 as *mut u32)
+                *(0x0804_0000 as *mut u32)
             });
 
             hprintln!(
@@ -221,7 +210,9 @@ impl Flash {
             }
         }
 
-        self.flash.bank1_mut().cr.modify(|_, w| w.pg().clear_bit());
+        self.flash.bank1_mut().cr.write(|w| w.fw().set_bit());
+
+        self.flash.bank1_mut().cr.write(|w| w.pg().clear_bit());
         self.flash.bank1_mut().cr.write(|w| w.lock().set_bit());
 
         if self.unlocked() {

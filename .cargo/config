@@ -1,4 +1,7 @@
 [target.thumbv7em-none-eabihf]
+
+runner = "probe-run --chip STM32H743ZITx"
+
 rustflags = [
   "-C", "link-arg=-Tlink.x",
 ]
