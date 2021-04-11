@@ -6,5 +6,9 @@ rustflags = [
   "-C", "link-arg=-Tlink.x",
 ]
 
+[target.'cfg(all(target_arch = "arm", target_os = "none"))']
+
+runner = "probe-run --chip STM32H743ZITx"
+
 [build]
 target = "thumbv7em-none-eabihf"

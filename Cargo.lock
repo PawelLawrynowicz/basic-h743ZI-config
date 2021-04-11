@@ -22,10 +22,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46afbd2983a5d5a7bd740ccb198caf5b82f45c40c09c0eed36052d91cb92e719"
 
 [[package]]
-name = "cast"
-version = "0.2.3"
+name = "byteorder"
+version = "1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b9434b9a5aa1450faa3f9cb14ea0e8c53bb5d2b3c1bfd1ab4fc03e9f33fbfb0"
+checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
+
+[[package]]
+name = "cast"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f566d1fbeb40ec78c78344e9983f46ff9eb4e944fa930ed01b7d72b72a37c11"
 dependencies = [
  "rustc_version",
 ]
@@ -73,12 +79,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "dice-hub75"
+version = "0.1.0"
+dependencies = [
+ "embedded-graphics",
+ "embedded-hal",
+ "hub75 0.1.1 (git+https://github.com/PawelLawrynowicz/hub75-rs.git?branch=DrawTarget-implementation)",
+]
+
+[[package]]
 name = "embedded-dma"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46c8c02e4347a0267ca60813c952017f4c5948c232474c6010a381a337f1bda4"
 dependencies = [
  "stable_deref_trait",
+]
+
+[[package]]
+name = "embedded-graphics"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40a69991ceb896bd4810a0cf2bcc46fc94b7860573c71f965d8e5b3d66942fed"
+dependencies = [
+ "byteorder",
 ]
 
 [[package]]
@@ -95,13 +119,34 @@ dependencies = [
 name = "hello_there"
 version = "0.1.0"
 dependencies = [
+ "cast",
  "cortex-m",
  "cortex-m-rt",
  "cortex-m-semihosting",
- "panic-halt",
- "panic-itm",
+ "dice-hub75",
+ "embedded-graphics",
+ "embedded-hal",
+ "hub75 0.1.1 (git+https://github.com/PawelLawrynowicz/hub75-rs?branch=stripe-multiplexing)",
  "panic-semihosting",
  "stm32h7xx-hal",
+]
+
+[[package]]
+name = "hub75"
+version = "0.1.1"
+source = "git+https://github.com/PawelLawrynowicz/hub75-rs.git?branch=DrawTarget-implementation#5e8d572d839c3f95cff5c9243d419a731ed98687"
+dependencies = [
+ "embedded-graphics",
+ "embedded-hal",
+]
+
+[[package]]
+name = "hub75"
+version = "0.1.1"
+source = "git+https://github.com/PawelLawrynowicz/hub75-rs?branch=stripe-multiplexing#5dfcecfa2d39e2476ef948dac8941b3d186afc77"
+dependencies = [
+ "embedded-graphics",
+ "embedded-hal",
 ]
 
 [[package]]
@@ -118,21 +163,6 @@ name = "nb"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "546c37ac5d9e56f55e73b677106873d9d9f5190605e41a856503623648488cae"
-
-[[package]]
-name = "panic-halt"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de96540e0ebde571dc55c73d60ef407c653844e6f9a1e2fdbd40c07b9252d812"
-
-[[package]]
-name = "panic-itm"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d577d97d1b31268087b6dddf2470e6794ef5eee87d9dca7fcd0481695391a4c"
-dependencies = [
- "cortex-m",
-]
 
 [[package]]
 name = "panic-semihosting"
@@ -152,9 +182,9 @@ checksum = "acbf547ad0c65e31259204bd90935776d1c693cec2f4ff7abb7a1bbbd40dfe58"
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.24"
+version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e0704ee1a7e00d7bb417d0770ea303c1bccbabf0ef1667dae92b5967f5f8a71"
+checksum = "a152013215dca273577e18d2bf00fa862b89b24169fb78c4c95aeb07992c9cec"
 dependencies = [
  "unicode-xid",
 ]
@@ -236,9 +266,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.67"
+version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6498a9efc342871f91cc2d0d694c674368b4ceb40f62b65a7a08c3792935e702"
+checksum = "48fe99c6bd8b1cc636890bcc071842de909d902c81ac7dab53ba33c421ab8ffb"
 dependencies = [
  "proc-macro2",
  "quote",

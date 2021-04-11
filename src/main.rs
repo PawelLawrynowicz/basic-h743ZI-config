@@ -1,19 +1,16 @@
 #![no_std]
 #![no_main]
 
-#[link_section = ".userdata"]
-#[no_mangle]
-static mut datax: [u32; 8] = [0, 0, 0, 0, 0, 859, 0, 0];
-use cortex_m_rt::entry;
-use cortex_m_semihosting::hprintln;
 use panic_semihosting as _;
-use stm32h7xx_hal::device::FLASH;
-use stm32h7xx_hal::device;
+use cortex_m_semihosting::hprintln;
+use cortex_m_rt::entry;
+use dice_hub75::{DrawTarget, Hub75, Pixel, Point, Rgb565};
+use embedded_graphics::{prelude::Primitive, primitives::{Circle, Line}, style::PrimitiveStyle};
+use stm32h7xx_hal::{delay::{Delay, DelayFromCountDownTimer}, hal::digital::v2::OutputPin};
+use stm32h7xx_hal::{device, prelude::*};
+use embedded_hal::blocking::delay::DelayUs;
+use stm32h7xx_hal::gpio::Speed::VeryHigh;
 use stm32h7xx_hal::prelude::*;
-pub struct Flash {
-    flash: FLASH,
-    pub sector: u8,
-}
 
 #[entry]
 fn main() -> ! {
@@ -27,212 +24,105 @@ fn main() -> ! {
     let ccdr = rcc
         .sys_ck(480.mhz())
         .hclk(240.mhz())
+        .pclk1(120.mhz())
+        .pclk2(120.mhz())
+        .pclk3(120.mhz())
+        .pclk4(120.mhz())
+        .per_ck(480.mhz())
         .pll1_strategy(stm32h7xx_hal::rcc::PllConfigStrategy::Iterative)
+        .pll1_q_ck(480.mhz())
         .freeze(pwrcfg, &dp.SYSCFG);
 
-    let linker_test = unsafe { datax };
-    hprintln!("LINKER MEMORY: {:?}", linker_test);
+    let gpioa = dp.GPIOA.split(ccdr.peripheral.GPIOA);
+    let gpiob = dp.GPIOB.split(ccdr.peripheral.GPIOB);
+    let gpioc = dp.GPIOC.split(ccdr.peripheral.GPIOC);
+    let gpiod = dp.GPIOD.split(ccdr.peripheral.GPIOD);
+    let gpioe = dp.GPIOE.split(ccdr.peripheral.GPIOE);
 
-    let flash = Flash::new(dp.FLASH, 0x2);
+    let R1 = gpiob.pb8.into_push_pull_output().set_speed(VeryHigh);
+    let R2 = gpioa.pa6.into_push_pull_output().set_speed(VeryHigh);
+    let G1 = gpiob.pb9.into_push_pull_output().set_speed(VeryHigh);
+    let G2 = gpiob.pb5.into_push_pull_output().set_speed(VeryHigh);
+    let B1 = gpioa.pa5.into_push_pull_output().set_speed(VeryHigh);
+    let B2 = gpiod.pd14.into_push_pull_output().set_speed(VeryHigh);
+    let A = gpioa.pa3.into_push_pull_output().set_speed(VeryHigh);
+    let B = gpioc.pc0.into_push_pull_output().set_speed(VeryHigh);
+    let C = gpioc.pc3.into_push_pull_output().set_speed(VeryHigh);
+    let D = gpiob.pb1.into_push_pull_output().set_speed(VeryHigh);
+    let STROBE = gpioe.pe12.into_push_pull_output().set_speed(VeryHigh);
+    let CLK = gpiob.pb10.into_push_pull_output().set_speed(VeryHigh);
+    let OE = gpioe.pe6.into_push_pull_output().set_speed(VeryHigh);
 
-    let mut value: [u32;8] = [1,2,3,4,0,8,5,9];
-    let offset = 0;
+    let mut display = Hub75::<_>::new((R1, G1, B1, R2, G2, B2, A, B, C, CLK, STROBE, OE), 6);
 
-    flash.erase().unwrap();
+    let mut x=0;
 
-    let linker_test = unsafe { datax };
-    hprintln!("LINKER MEMORY: {:?}", linker_test);
+    //let mut delay = Delay::new(cp.SYST, ccdr.clocks);
 
-    flash.write(offset, &value).unwrap();
+    let timer2 = dp
+    .TIM2
+    .timer(100.ms(), ccdr.peripheral.TIM2, &ccdr.clocks);
 
-    let linker_test = unsafe { datax };
-    hprintln!("LINKER MEMORY: {:?}", linker_test);
+    let mut delay = DelayFromCountDownTimer::new(timer2);
 
-    value = flash.read(offset);
+    let line = Line::new(Point::new(0, 0), Point::new(31, 31))
+    .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(255,255,255), 1));
 
-    hprintln!("HOPEFULLY NOT 4294967295:\n              {:?}", value).unwrap();
+    let circle = Circle::new(Point::new(10, 10), 5)
+    .into_styled(PrimitiveStyle::with_fill(Rgb565::new(255,0,0)));
 
-    loop {}
-}
+    //display.draw_line(&line);
 
-#[derive(Debug, Clone)]
-pub struct FlashError {
-    status: u16,
-}
+    //display.clear(Rgb565::new(255,255,255));
 
-///All errors contain raw value of the FLASH_SR status register (lower 16b)
-impl Flash {
-    pub fn new(flash: FLASH, sector: u8) -> Self {
-        debug_assert!(sector < 16, "invalid sector {}", sector);
+    fn translator(x: i32, y: i32)->Point{
+        let panel_rows = 32;
+        let panel_cols = 32;
 
-        let flash = Flash { flash, sector };
+        let is_top_stripe: bool = (y % (panel_rows/2)) < panel_rows/4;
 
-        flash.init();
+        let new_x;
+        let new_y;
 
-        flash
-    }
-
-    fn init(&self) {
-        match self.unlocked() {
-            true => panic!("LOCK1 UNLOCKED"),
-            false => hprintln!("LOCK1 LOCKED").unwrap(),
+        if is_top_stripe{
+            new_x=x+panel_cols;
+        }
+        else {
+            new_x=x;
         }
 
-        self.flash
-            .bank1_mut()
-            .keyr
-            .write(|w| unsafe { w.keyr().bits(0x4567_0123) });
-        self.flash
-            .bank1_mut()
-            .keyr
-            .write(|w| unsafe { w.keyr().bits(0xCDEF_89AB) });
+        new_y=(y / (panel_rows/2))*(panel_rows/4)+y%(panel_rows/4);
 
-        self.flash
-            .bank1_mut()
-            .cr
-            .modify(|_, w| unsafe { w.psize().bits(0b10) });
-
-        cortex_m::asm::dsb();
-        cortex_m::asm::isb();
-
-        let ps = self.flash.bank1_mut().cr.read().psize().bits();
-        hprintln!("PSIZE: {}", ps);
-
-        match self.unlocked() {
-            true => hprintln!("LOCK1 UNLOCKED!").unwrap(),
-            false => panic!("LOCK1 LOCKED"),
-        }
+        Point::new(new_x, new_y)
     }
 
-    fn unlocked(&self) -> bool {
-        match self.flash.bank1_mut().cr.read().lock().bit_is_clear() {
-            false => return false,
-            true => return true,
-        }
-    }
+    let line1 = Line::new(translator(0, 0), translator(7, 7))
+    .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(255,255,255), 1));
 
-    pub fn erase(&self) -> Result<(), u16> {
-        while self.flash.bank1_mut().sr.read().qw().bit_is_set() {}
+    let line2 = Line::new(translator(8, 8), translator(15, 15))
+    .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(255,255,255), 1));
 
-        self.flash.bank1_mut().cr.modify(|_, w| {
-            w.ser().set_bit();
-            unsafe { w.snb().bits(self.sector) }
-        });
-        self.flash.bank1_mut().cr.modify(|_, w| w.start().set_bit());
+    let line3 = Line::new(translator(16, 16), translator(23, 23))
+    .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(255,255,255), 1));
 
-        while self.flash.bank1_mut().sr.read().qw().bit_is_set() {}
+    let line4 = Line::new(translator(24, 24), translator(31, 31))
+    .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(255,255,255), 1));
 
-        //CO TO ROBI?
-        self.flash
-            .bank1_mut()
-            .cr
-            .modify(|_, w| w.start().clear_bit());
+    loop {
+        //let pixel = Pixel(Point::new(32, x), Rgb565::new(125, 125, 0));
+        //x+=1;
+        
+       display.draw_line(&line1);
+       display.draw_line(&line2);
+       display.draw_line(&line3);
+       display.draw_line(&line4);
 
-        let status = self.flash.bank1_mut().sr.read();
-        if status.wrperr().bit_is_set() {
-            self.flash
-                .bank1_mut()
-                .sr
-                .modify(|_, w| w.wrperr().set_bit());
-            return Err(status.bits() as u16);
-        }
+       // display.draw_circle(&circle).unwrap();
 
-        self.flash.bank1_mut().cr.modify(|_, w| w.ser().clear_bit());
-        Ok(())
-    }
+        //display.draw_pixel(pixel).unwrap();
 
-    fn get_address(&self, offset: usize, access_size: usize) -> usize {
-        let (size, address) = match self.sector {
-            //RM0090 Rev 18 page 75
-            0..=15 => (0x20000, 0x0800_0000 + self.sector as usize * 0x20000),
-            _ => panic!("invalid sector {}", self.sector),
-        };
-
-        debug_assert!(offset + access_size < size, "access beyond sector limits");
-
-        address + offset
-    }
-
-    pub fn write<T>(&self, offset: usize, data: &T) -> Result<(), u16> {
-        let size = core::mem::size_of::<T>();
-        let src_ptr = (data as *const T) as *const u32;
-        let dest_ptr = Flash::get_address(self, offset, size) as *mut u32;
-
-        debug_assert!(size % 4 == 0, "data size not 4-byte aligned");
-        debug_assert!(src_ptr as usize % 4 == 0, "data address not 4-byte aligned");
-
-        hprintln!("WAITING FOR BANK1");
-        while self.flash.bank1_mut().sr.read().qw().bit_is_set() {}
-        hprintln!("FINISHED WAITING FOR BANK1");
-
-        //check if register operations can be moved out of the loop
-        for i in 0..size as isize / 4 {
-            hprintln!("SETTING PG1 BIT");
-            self.flash.bank1_mut().cr.write(|w| w.pg().set_bit());
-
-            hprintln!("WSPN: {:?}", self.flash.bank1_mut().wpsn_curr.read().bits());
-
-            unsafe {
-                let zmienna = src_ptr.offset(i);
-                core::ptr::write_volatile(dest_ptr.offset(i), *zmienna);
-
-                hprintln!("WROTE: {} to ADDRESS: {:?}", *zmienna, dest_ptr.offset(i));
-                hprintln!("AFTER WRITING: {:?}", *dest_ptr);
-            }
-  
-            hprintln!("AFTER FORCE WRITING: {:?}", unsafe {
-                *(0x0804_0000 as *mut u32)
-            });
-
-            hprintln!(
-                "REGISTER STATUS: {}",
-                self.flash.bank1_mut().sr.read().bits()
-            );
-
-            hprintln!("WAITING FOR BANK1 AGAIN");
-            while self.flash.bank1_mut().sr.read().qw().bit_is_set() {}
-            hprintln!("FINISHED WAITING FOR BANK1 AGAIN");
-
-            let status = self.flash.bank1_mut().sr.read();
-            if status.wrperr().bit_is_set()
-                || status.pgserr().bit_is_set()
-                || status.operr().bit_is_set()
-                || status.incerr().bit_is_set()
-                || status.strberr().bit_is_set()
-                || status.rdperr().bit_is_set()
-            {
-                hprintln!("STATUS ERROR DURING WRITE");
-                self.flash
-                    .bank1_mut()
-                    .sr
-                    .write(|w| unsafe { w.bits(0xFFFF) });
-                return Err(status.bits() as u16);
-            }
-        }
-
-        self.flash.bank1_mut().cr.write(|w| w.fw().set_bit());
-
-        self.flash.bank1_mut().cr.write(|w| w.pg().clear_bit());
-        self.flash.bank1_mut().cr.write(|w| w.lock().set_bit());
-
-        if self.unlocked() {
-            panic!("CR1 UNLOCKED AFTER WRITE");
-        }
-
-        Ok(())
-    }
-
-    pub fn read<T>(&self, offset: usize) -> T {
-        let size = core::mem::size_of::<T>();
-        let ptr = Flash::get_address(self, offset, size) as *const u8;
-        unsafe { core::ptr::read(ptr as *const _) }
-    }
-
-    pub fn read_into<T>(&self, offset: usize, dest: &mut T) {
-        let size = core::mem::size_of::<T>();
-        let ptr = Flash::get_address(self, offset, size) as *const u8;
-        unsafe {
-            core::ptr::copy_nonoverlapping(ptr as *const _, dest, 1);
-        };
+        //hprintln!("x: {}", x);
+        
+        display.output(&mut delay).ok();
     }
 }

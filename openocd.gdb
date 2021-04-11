@@ -10,7 +10,7 @@ set print asm-demangle on
 
 monitor arm semihosting enable
 
-#load
+load
 
 # start the process but immediately halt the processor
 stepi
