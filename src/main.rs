@@ -36,7 +36,7 @@ fn main() -> ! {
 
     value = flash.read(offset);
 
-    hprintln!("HOPEFULLY NOT 4294967295:\n              {:?}", value).unwrap();
+    hprintln!("HOPEFULLY NOT 4294967295:\n\t\t\t  {:?}", value).unwrap();
 
     loop {}
 }
@@ -72,18 +72,6 @@ impl Flash {
             .bank1()
             .cr
             .modify(|_, w| unsafe { w.psize().bits(0b10) });
-
-        //cortex_m::asm::dsb();
-        //cortex_m::asm::isb();
-
-        let ps = self.flash.bank1().cr.read().psize().bits();
-    }
-
-    fn unlocked(&self) -> bool {
-        match self.flash.bank1().cr.read().lock().bit_is_clear() {
-            false => return false,
-            true => return true,
-        }
     }
 
     pub fn erase(&self) -> Result<(), u16> {
@@ -97,9 +85,6 @@ impl Flash {
 
         while self.flash.bank1().sr.read().qw().bit_is_set() {}
 
-        //CO TO ROBI?
-        self.flash.bank1().cr.modify(|_, w| w.start().clear_bit());
-
         let status = self.flash.bank1().sr.read();
         if status.wrperr().bit_is_set() {
             self.flash.bank1().sr.modify(|_, w| w.wrperr().set_bit());
@@ -112,7 +97,6 @@ impl Flash {
 
     fn get_address(&self, offset: usize, access_size: usize) -> usize {
         let (size, address) = match self.sector {
-            //RM0090 Rev 18 page 75
             0..=15 => (0x20000, 0x0800_0000 + self.sector as usize * 0x20000),
             _ => panic!("invalid sector {}", self.sector),
         };
@@ -131,14 +115,12 @@ impl Flash {
         debug_assert!(src_ptr as usize % 4 == 0, "data address not 4-byte aligned");
 
         while self.flash.bank1().sr.read().qw().bit_is_set() {}
-        //self.flash.bank1().cr.write(|w| w.fw().set_bit());
         //check if register operations can be moved out of the loop
         for i in 0..size as isize / 4 {
             self.flash.bank1().cr.write(|w| w.pg().set_bit());
 
             unsafe {
-                let zmienna = src_ptr.offset(i);
-                core::ptr::write_volatile(dest_ptr.offset(i), *zmienna);
+                core::ptr::write_volatile(dest_ptr.offset(i), *src_ptr.offset(i));
             }
             while self.flash.bank1().sr.read().qw().bit_is_set() {}
 
@@ -155,7 +137,7 @@ impl Flash {
             }
         }
 
-        //force write if you're imputing less than 256 bits
+        //doesn't work but should force write if you're imputing less than 256 bits (32 bytes)
         //self.flash.bank1().cr.write(|w| w.fw().set_bit());
 
         self.flash.bank1().cr.write(|w| w.pg().clear_bit());
