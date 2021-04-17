@@ -4,13 +4,10 @@
 use cortex_m_rt::entry;
 use cortex_m_semihosting::hprintln;
 use panic_semihosting as _;
-use stm32h7xx_hal::device;
 use stm32h7xx_hal::device::FLASH;
+use stm32h7xx_hal::device::{self, flash::BANK};
 use stm32h7xx_hal::prelude::*;
-pub struct Flash {
-    flash: FLASH,
-    pub sector: u8,
-}
+
 #[entry]
 fn main() -> ! {
     let dp = device::Peripherals::take().unwrap();
@@ -45,53 +42,67 @@ fn main() -> ! {
 pub struct FlashError {
     status: u16,
 }
+pub struct Flash {
+    flash: FLASH,
+    sector: u8,
+}
 
 ///All errors contain raw value of the FLASH_SR status register (lower 16b)
 impl Flash {
     pub fn new(flash: FLASH, sector: u8) -> Self {
-        debug_assert!(sector < 16, "invalid sector {}", sector);
+        assert!(sector < 16, "invalid sector {}", sector);
 
-        let flash = Flash { flash, sector };
+        let flash = Flash {
+            flash,
+            sector,
+        };
 
         flash.init();
 
         flash
     }
 
+    fn bank(&self) -> &mut BANK{
+        let bank = if self.sector > 7 {
+            self.flash.bank2_mut()
+        } else {
+            self.flash.bank1_mut()
+        };
+
+        bank
+    }
+
     fn init(&self) {
-        self.flash
-            .bank1()
+        self.bank()
             .keyr
             .write(|w| unsafe { w.keyr().bits(0x4567_0123) });
-        self.flash
-            .bank1()
+        self.bank()
             .keyr
             .write(|w| unsafe { w.keyr().bits(0xCDEF_89AB) });
 
-        self.flash
-            .bank1()
+        self.bank()
             .cr
             .modify(|_, w| unsafe { w.psize().bits(0b10) });
     }
 
     pub fn erase(&self) -> Result<(), u16> {
-        while self.flash.bank1().sr.read().qw().bit_is_set() {}
+        while self.bank().sr.read().qw().bit_is_set() {}
 
-        self.flash.bank1().cr.modify(|_, w| {
+        self.bank().cr.modify(|_, w| {
             w.ser().set_bit();
             unsafe { w.snb().bits(self.sector) }
         });
-        self.flash.bank1().cr.modify(|_, w| w.start().set_bit());
+        self.bank().cr.modify(|_, w| w.start().set_bit());
 
-        while self.flash.bank1().sr.read().qw().bit_is_set() {}
+        while self.bank().sr.read().qw().bit_is_set() {}
 
-        let status = self.flash.bank1().sr.read();
+        let status = self.bank().sr.read();
         if status.wrperr().bit_is_set() {
-            self.flash.bank1().sr.modify(|_, w| w.wrperr().set_bit());
+            self.bank().sr.modify(|_, w| w.wrperr().set_bit());
             return Err(status.bits() as u16);
         }
 
-        self.flash.bank1().cr.modify(|_, w| w.ser().clear_bit());
+        self.bank().cr.modify(|_, w| w.ser().clear_bit());
         Ok(())
     }
 
@@ -101,7 +112,7 @@ impl Flash {
             _ => panic!("invalid sector {}", self.sector),
         };
 
-        debug_assert!(offset + access_size < size, "access beyond sector limits");
+        assert!(offset + access_size < size, "access beyond sector limits");
 
         address + offset
     }
@@ -111,20 +122,20 @@ impl Flash {
         let src_ptr = (data as *const T) as *const u32;
         let dest_ptr = Flash::get_address(self, offset, size) as *mut u32;
 
-        debug_assert!(size % 4 == 0, "data size not 4-byte aligned");
-        debug_assert!(src_ptr as usize % 4 == 0, "data address not 4-byte aligned");
+        assert!(size % 4 == 0, "data size not 4-byte aligned");
+        assert!(src_ptr as usize % 4 == 0, "data address not 4-byte aligned");
 
-        while self.flash.bank1().sr.read().qw().bit_is_set() {}
+        while self.bank().sr.read().qw().bit_is_set() {}
         //check if register operations can be moved out of the loop
         for i in 0..size as isize / 4 {
-            self.flash.bank1().cr.write(|w| w.pg().set_bit());
+            self.bank().cr.write(|w| w.pg().set_bit());
 
             unsafe {
                 core::ptr::write_volatile(dest_ptr.offset(i), *src_ptr.offset(i));
             }
-            while self.flash.bank1().sr.read().qw().bit_is_set() {}
+            while self.bank().sr.read().qw().bit_is_set() {}
 
-            let status = self.flash.bank1().sr.read();
+            let status = self.bank().sr.read();
             if status.wrperr().bit_is_set()
                 || status.pgserr().bit_is_set()
                 || status.operr().bit_is_set()
@@ -132,17 +143,17 @@ impl Flash {
                 || status.strberr().bit_is_set()
                 || status.rdperr().bit_is_set()
             {
-                self.flash.bank1().sr.write(|w| unsafe { w.bits(0xFFFF) });
+                self.bank().sr.write(|w| unsafe { w.bits(0xFFFF) });
                 return Err(status.bits() as u16);
             }
         }
 
         //doesn't work but should force write if you're imputing less than 256 bits (32 bytes)
-        //self.flash.bank1().cr.write(|w| w.fw().set_bit());
+        //self.bank().cr.write(|w| w.fw().set_bit());
 
-        self.flash.bank1().cr.write(|w| w.pg().clear_bit());
+        self.bank().cr.write(|w| w.pg().clear_bit());
 
-        self.flash.bank1().cr.write(|w| w.lock().set_bit());
+        self.bank().cr.write(|w| w.lock().set_bit());
 
         Ok(())
     }
