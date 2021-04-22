@@ -1,16 +1,32 @@
 #![no_std]
 #![no_main]
 
-use panic_semihosting as _;
-use cortex_m_semihosting::hprintln;
 use cortex_m_rt::entry;
+use cortex_m_semihosting::hprintln;
 use dice_hub75::{DrawTarget, Hub75, Pixel, Point, Rgb565};
-use embedded_graphics::{prelude::Primitive, primitives::{Circle, Line}, style::PrimitiveStyle};
-use stm32h7xx_hal::{delay::{Delay, DelayFromCountDownTimer}, hal::digital::v2::OutputPin};
-use stm32h7xx_hal::{device, prelude::*};
+use embedded_graphics::primitives::Triangle;
+use embedded_graphics::{
+    egtext,
+    fonts::{Font6x6, Font6x8, Text},
+    style::TextStyle,
+    image::Image,
+    drawable::Drawable,
+    pixelcolor::Rgb888,
+    prelude::Primitive,
+    primitives::{Circle, Line},
+    style::PrimitiveStyle,
+    text_style,
+};
 use embedded_hal::blocking::delay::DelayUs;
+use panic_semihosting as _;
 use stm32h7xx_hal::gpio::Speed::VeryHigh;
 use stm32h7xx_hal::prelude::*;
+use stm32h7xx_hal::{
+    delay::{Delay, DelayFromCountDownTimer},
+    hal::digital::v2::OutputPin,
+};
+use stm32h7xx_hal::{device, prelude::*};
+use tinytga::Tga;
 
 #[entry]
 fn main() -> ! {
@@ -38,91 +54,60 @@ fn main() -> ! {
     let gpioc = dp.GPIOC.split(ccdr.peripheral.GPIOC);
     let gpiod = dp.GPIOD.split(ccdr.peripheral.GPIOD);
     let gpioe = dp.GPIOE.split(ccdr.peripheral.GPIOE);
+    let gpiog = dp.GPIOG.split(ccdr.peripheral.GPIOG);
+    let gpiof = dp.GPIOF.split(ccdr.peripheral.GPIOF);
 
-    let R1 = gpiob.pb8.into_push_pull_output().set_speed(VeryHigh);
-    let R2 = gpioa.pa6.into_push_pull_output().set_speed(VeryHigh);
-    let G1 = gpiob.pb9.into_push_pull_output().set_speed(VeryHigh);
-    let G2 = gpiob.pb5.into_push_pull_output().set_speed(VeryHigh);
-    let B1 = gpioa.pa5.into_push_pull_output().set_speed(VeryHigh);
-    let B2 = gpiod.pd14.into_push_pull_output().set_speed(VeryHigh);
-    let A = gpioa.pa3.into_push_pull_output().set_speed(VeryHigh);
-    let B = gpioc.pc0.into_push_pull_output().set_speed(VeryHigh);
-    let C = gpioc.pc3.into_push_pull_output().set_speed(VeryHigh);
+    let R1 = gpiof.pf0.into_push_pull_output().set_speed(VeryHigh);
+    let R2 = gpiof.pf3.into_push_pull_output().set_speed(VeryHigh);
+    let G1 = gpiof.pf1.into_push_pull_output().set_speed(VeryHigh);
+    let G2 = gpiof.pf4.into_push_pull_output().set_speed(VeryHigh);
+    let B1 = gpiof.pf2.into_push_pull_output().set_speed(VeryHigh);
+    let B2 = gpiof.pf5.into_push_pull_output().set_speed(VeryHigh);
+    let A = gpiod.pd0.into_push_pull_output().set_speed(VeryHigh);
+    let B = gpiod.pd1.into_push_pull_output().set_speed(VeryHigh);
+    let C = gpiog.pg0.into_push_pull_output().set_speed(VeryHigh);
     let D = gpiob.pb1.into_push_pull_output().set_speed(VeryHigh);
     let STROBE = gpioe.pe12.into_push_pull_output().set_speed(VeryHigh);
     let CLK = gpiob.pb10.into_push_pull_output().set_speed(VeryHigh);
     let OE = gpioe.pe6.into_push_pull_output().set_speed(VeryHigh);
 
-    let mut display = Hub75::<_>::new((R1, G1, B1, R2, G2, B2, A, B, C, CLK, STROBE, OE), 6);
+    let mut display = Hub75::<_, 128>::new((A, B, C, CLK, STROBE, OE), 3, unsafe {&mut *(0x58021414 as *mut u8)});
 
-    let mut x=0;
-
-    //let mut delay = Delay::new(cp.SYST, ccdr.clocks);
-
-    let timer2 = dp
-    .TIM2
-    .timer(100.ms(), ccdr.peripheral.TIM2, &ccdr.clocks);
+    let timer2 = dp.TIM2.timer(2.ms(), ccdr.peripheral.TIM2, &ccdr.clocks);
 
     let mut delay = DelayFromCountDownTimer::new(timer2);
 
-    let line = Line::new(Point::new(0, 0), Point::new(31, 31))
-    .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(255,255,255), 1));
+    let data = include_bytes!("../grappa.tga");
+    let tga = Tga::from_slice(data).unwrap();
+    let image: Image<Tga, Rgb888> = Image::new(&tga, Point::zero());
+    display.draw_image(&image);
 
-    let circle = Circle::new(Point::new(10, 10), 5)
-    .into_styled(PrimitiveStyle::with_fill(Rgb565::new(255,0,0)));
+    // let triangle = Triangle::new(Point::new(24, 0), Point::new(30, 0), Point::new(27, 4))
+    //     .into_styled(PrimitiveStyle::with_fill(Rgb888::new(255, 0, 0)))
+    //     .draw(&mut display);
 
-    //display.draw_line(&line);
+    // let triangle2 = Triangle::new(Point::new(24, 20), Point::new(30, 20), Point::new(27, 16))
+    //     .into_styled(PrimitiveStyle::with_fill(Rgb888::new(0, 255, 0)))
+    //     .draw(&mut display);
 
-    //display.clear(Rgb565::new(255,255,255));
+    // let text = Text::new("BTC\n-3,2%", Point::new(0, 0))
+    //     .into_styled(TextStyle::new(Font6x6, Rgb888::new(255, 255, 255)))
+    //     .draw(&mut display);
 
-    fn translator(x: i32, y: i32)->Point{
-        let panel_rows = 32;
-        let panel_cols = 32;
+    // let text2 = Text::new("ETH\n+2,1%", Point::new(0, 16))
+    //     .into_styled(TextStyle::new(Font6x6, Rgb888::new(255, 255, 255)))
+    //     .draw(&mut display);
 
-        let is_top_stripe: bool = (y % (panel_rows/2)) < panel_rows/4;
+    // let line = Line::new(Point::new(0, 0), Point::new(63, 31))
+    //     .into_styled(PrimitiveStyle::with_stroke(Rgb888::new(255,255,255), 1)).draw(&mut display);
 
-        let new_x;
-        let new_y;
+    //display.clear(Rgb888::new(255,255,255));
 
-        if is_top_stripe{
-            new_x=x+panel_cols;
-        }
-        else {
-            new_x=x;
-        }
+    //display.clear(Rgb888::new(32,32,32));
 
-        new_y=(y / (panel_rows/2))*(panel_rows/4)+y%(panel_rows/4);
-
-        Point::new(new_x, new_y)
-    }
-
-    let line1 = Line::new(translator(0, 0), translator(7, 7))
-    .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(255,255,255), 1));
-
-    let line2 = Line::new(translator(8, 8), translator(15, 15))
-    .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(255,255,255), 1));
-
-    let line3 = Line::new(translator(16, 16), translator(23, 23))
-    .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(255,255,255), 1));
-
-    let line4 = Line::new(translator(24, 24), translator(31, 31))
-    .into_styled(PrimitiveStyle::with_stroke(Rgb565::new(255,255,255), 1));
+    
 
     loop {
-        //let pixel = Pixel(Point::new(32, x), Rgb565::new(125, 125, 0));
-        //x+=1;
-        
-       display.draw_line(&line1);
-       display.draw_line(&line2);
-       display.draw_line(&line3);
-       display.draw_line(&line4);
-
-       // display.draw_circle(&circle).unwrap();
-
-        //display.draw_pixel(pixel).unwrap();
-
-        //hprintln!("x: {}", x);
-        
-        display.output(&mut delay).ok();
+        display.output_bcm(&mut delay, 1);
     }
 }
